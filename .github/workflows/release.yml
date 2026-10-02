@@ -1,0 +1,47 @@
+name: Release module
+
+# Builds aevum-codex.zip and publishes a GitHub release whenever the
+# version in module.json changes (or when run manually).
+on:
+  push:
+    branches: [main]
+    paths: ["module.json"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read version
+        id: v
+        run: echo "version=$(jq -r .version module.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Check for existing release
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "v${{ steps.v.outputs.version }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build zip
+        if: steps.check.outputs.exists == 'false'
+        run: zip -r aevum-codex.zip module.json README.md scripts styles assets
+
+      - name: Publish release
+        if: steps.check.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v${{ steps.v.outputs.version }}" aevum-codex.zip module.json \
+            --title "Aevum Codex v${{ steps.v.outputs.version }}" \
+            --notes "Install in Foundry/Sqyre with the manifest URL: https://github.com/${{ github.repository }}/releases/latest/download/module.json" \
+            --latest
